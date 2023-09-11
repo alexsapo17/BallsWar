@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balls War - Main Menu</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; margin: 0 auto; background-color: #333; }
+    </style>
+</head>
+<body>
+<script>
+    var config = {
+        type: Phaser.AUTO,
+        width: 640,
+        height: 360,
+        scene: {
+            preload: preload,
+            create: create,
+            update: update
+        }
+    };
+
+    var playerCoins = 100;
+    var playerXP = 50;
+    var requiredXP = 100;
+
+    var stars = [];
+    var parallaxStars = [];
+
+    function preload() {
+        this.load.image('background', 'assets/images/schermatainiziale/background.png');
+        this.load.image('playButton', 'assets/images/schermatainiziale/play_button.png');
+        this.load.image('gamesButton', 'assets/images/schermatainiziale/games_button.png');
+        this.load.image('upgradesButton', 'assets/images/schermatainiziale/upgrades_button.png');
+        this.load.image('logo', 'assets/images/schermatainiziale/balls_war_logo.png');
+        this.load.image('star', 'assets/images/schermatainiziale/star.png');
+        this.load.image('settings', 'assets/images/schermatainiziale/settings.png');
+        this.load.image('parallaxStar', 'assets/images/schermatainiziale/parallax_star.png');
+    }
+
+    function create() {
+        this.add.image(320, 180, 'background').setScale(1.1).setAlpha(0.8);
+
+        for (let i = 0; i < 100; i++) {
+            let x = Math.random() * 640;
+            let y = Math.random() * 360;
+            let parallaxStar = this.add.image(x, y, 'parallaxStar').setAlpha(0.5).setScale(0.5 + Math.random() * 0.5);
+            parallaxStars.push(parallaxStar);
+        }
+
+        for (let i = 0; i < 50; i++) {
+            let x = Math.random() * 640;
+            let y = Math.random() * 360;
+            let star = this.add.image(x, y, 'star').setAlpha(0.5).setScale(Math.random() * 0.5);
+            stars.push(star);
+        }
+
+        this.add.image(320, 70, 'logo').setScale(0.7);
+
+        this.coinsText = this.add.text(20, 20, `Coins: ${playerCoins}`, { fontSize: '24px', fill: '#FFF' });
+        this.xpText = this.add.text(20, 50, `XP: ${playerXP}/${requiredXP}`, { fontSize: '24px', fill: '#FFF' });
+        this.progressBar = this.add.graphics();
+        updateProgressBar.call(this);
+
+
+        createButton(this, 320, 150, 'playButton', 'BallsWar.html');
+        createButton(this, 320, 220, 'gamesButton', 'minigiochi.html');
+        createButton(this, 320, 290, 'upgradesButton', 'upgrades.html');
+
+        let settingsBtn = this.add.image(600, 30, 'settings').setScale(0.7).setInteractive();
+        settingsBtn.on('pointerdown', () => { 
+            alert("Settings Menu (To be implemented)"); 
+        });
+    }
+
+    function update() {
+        parallaxStars.forEach(star => {
+            star.x += 0.1;
+            if (star.x > 640) {
+                star.x = 0;
+                star.y = Math.random() * 360;
+            }
+        });
+
+        stars.forEach(star => {
+            star.angle += 0.5;
+        });
+    }
+
+    function createButton(scene, x, y, key, url) {
+        let button = scene.add.image(x, y, key).setInteractive().setScale(0.9);
+        button.on('pointerover', () => button.setScale(1));
+        button.on('pointerout', () => button.setScale(0.9));
+        button.on('pointerdown', () => window.location.href = url);
+    }
+
+    function updateProgressBar() {
+        this.progressBar.clear();
+        this.progressBar.fillStyle(0xFFFFFF, 0.8);
+        this.progressBar.fillRect(20, 80, 200 * (playerXP / requiredXP), 10);
+    }
+
+    var game = new Phaser.Game(config);
+
+</script>
+</body>
+</html>
