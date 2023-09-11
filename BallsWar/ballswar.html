@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balls War</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; margin: 0 auto; background-color: #333; }
+    </style>
+</head>
+<body>
+    <script>
+        var config = {
+        type: Phaser.AUTO,
+        width: 640,
+        height: 360,
+        physics: {
+            default: 'arcade',
+            arcade: {
+                gravity: { y: 0 },
+                debug: true
+            }
+        },
+        scene: {
+            preload: preload,
+            create: create,
+            update: update
+        }
+    };
+    
+    var player1, player2, player1HealthBar, player2HealthBar, gameOverText;
+    var cursors, spaceKey, bullets, shieldKey, specialAbilityKey, player1ShieldActive = false;
+    var player1Health = 100;
+    var player2Health = 100;
+    var specialAbilityCooldown = 0;
+    var coinCount = 0;
+    var coinText;
+    var playerSpeed = 200; 
+    var bulletImage = 'asteroide';
+    var specialAttackCooldown = 0;
+var coinCount = 0;
+var coinText;
+var wall1, wall2;
+var sceneContext; 
+var rotationSpeed = 0.05;
+var lastShotTime = 0;
+var shotCooldown = 200;  // 500 ms di cooldown
+
+var acceleration = 800;
+var drag = 300;
+var maxSpeed = 400;
+var inertia = 0.99;
+
+let lastShotTimeAI = 0;  // Ultimo tempo di sparo per l'AI
+let shotCooldownAI = 2000;  // Tempo di ricarica per l'AI (in millisecondi)
+let aiState = 'approach';  // Stato comportamentale dell'AI: 'approach', 'retreat', 'circle'
+
+    function preload() {
+        this.load.image('ball', 'assets/images/ball.png');
+        this.load.image('bullet', 'assets/images/asteroide.png');
+        this.load.image('asteroide', 'assets/images/asteroide.png');
+
+    }
+    
+    function create() {
+    player1 = this.physics.add.sprite(100, 180, 'ball');
+    player2 = this.physics.add.sprite(540, 180, 'ball');
+    player1.setCollideWorldBounds(true);
+    player2.setCollideWorldBounds(true);
+    player1.setScale(0.2);
+    player2.setScale(0.2);
+    this.cameras.main.setBackgroundColor('#24252A');
+    sceneContext = this; 
+
+    cursors = this.input.keyboard.createCursorKeys();
+    spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    shieldKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+    specialAbilityKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+
+    console.log("Initializing bullets group.");
+    bullets = this.physics.add.group({
+        key: 'bullet',
+        maxSize: 100,
+        visible: false,
+        active: false
+    });
+    
+    // Use the asteroid image for bullets
+    bullets.children.iterate(function (bullet) {
+        bullet.setTexture('asteroide');
+    });
+
+    console.log("Setting up collisions between players and bullets.");
+    this.physics.add.collider(player1, bullets, hitPlayer1, null, this);
+    this.physics.add.collider(player2, bullets, hitPlayer2, null, this);
+
+    player1HealthBar = this.add.graphics();
+    player2HealthBar = this.add.graphics();
+    drawHealthBars();
+    player1.setDrag(drag);
+    player1.setMaxVelocity(maxSpeed);
+
+    coinText = this.add.text(16, 16, 'Monete: 0', { fontSize: '32px', fill: '#FFF' });
+    
+    gameOverText = this.add.text(320, 180, 'GAME OVER', { fontSize: '64px', fill: '#FFF' });
+    gameOverText.setOrigin(0.5);
+    gameOverText.setVisible(false);
+    
+    wall1 = this.add.rectangle(200, 180, 50, 100, 0xFFFFFF);
+    wall2 = this.add.rectangle(440, 180, 50, 100, 0xFFFFFF);
+    this.physics.add.existing(wall1);
+    this.physics.add.existing(wall2);
+    this.physics.add.collider(player1, wall1);
+    this.physics.add.collider(player1, wall2);
+    this.physics.add.collider(player2, wall1);
+    this.physics.add.collider(player2, wall2);
+
+    this.input.on('pointerdown', function (pointer) {
+        if (pointer.x < config.width / 2) {
+            shootBullet(player1);
+        } else {
+            // You can trigger a special ability or another command for player 1 here
+        }
+    });
+}
+
+    
+function update() {
+    // Verifica che player1 e player1.body siano definiti
+    if (player1 && player1.body) {
+        // Resetta l'accelerazione
+        player1.setAcceleration(0, 0);
+
+        // Gestione del cooldown delle abilità speciali
+        if (specialAbilityCooldown > 0) {
+            specialAbilityCooldown -= 1;
+        }
+
+        // Controllo della direzione
+        if (cursors.left.isDown) {
+            player1.setAccelerationX(-acceleration);
+        } else if (cursors.right.isDown) {
+            player1.setAccelerationX(acceleration);
+        }
+
+        if (cursors.up.isDown) {
+            player1.setAccelerationY(-acceleration);
+        } else if (cursors.down.isDown) {
+            player1.setAccelerationY(acceleration);
+        }
+
+        // Applica l'inerzia
+        player1.body.velocity.x *= inertia;
+        player1.body.velocity.y *= inertia;
+
+        // Limite di velocità
+        player1.setMaxVelocity(maxSpeed);
+
+        // Sparo del proiettile
+        if (spaceKey.isDown) {
+            shootBullet(player1);
+        }
+
+        // Attivazione dello scudo
+        if (shieldKey.isDown && !player1ShieldActive) {
+            activateShield(player1);
+        }
+
+        // Abilità speciale
+        if (specialAbilityKey.isDown && specialAbilityCooldown === 0) {
+            shootSpecialBullet(player1);
+            specialAbilityCooldown = 300;
+        }
+
+        // Attacco speciale
+        if (specialAbilityKey.isDown && specialAttackCooldown <= 0) {
+            specialAttack(player1);
+            specialAttackCooldown = 200;
+        }
+    }
+
+    // Verifica che player2 e player2.body siano definiti
+// AI per player2
+if (player2 && player2.body && player1 && player1.body) {
+    let distanceToPlayer1 = Phaser.Math.Distance.Between(player1.x, player1.y, player2.x, player2.y);
+    let angleToPlayer1 = Phaser.Math.Angle.Between(player2.x, player2.y, player1.x, player1.y);
+
+    // Cambiare stato dell'AI in base alla distanza
+    if (distanceToPlayer1 < 100) {
+        aiState = 'retreat';
+    } else if (distanceToPlayer1 > 300) {
+        aiState = 'approach';
+    } else {
+        aiState = 'circle';
+    }
+
+    // Comportamento dell'AI in base allo stato
+    if (aiState === 'approach') {
+        // Avvicinarsi a player1
+        sceneContext.physics.velocityFromAngle(Phaser.Math.RadToDeg(angleToPlayer1), 100, player2.body.velocity);
+    } else if (aiState === 'retreat') {
+        // Allontanarsi da player1
+        sceneContext.physics.velocityFromAngle(Phaser.Math.RadToDeg(angleToPlayer1), -100, player2.body.velocity);
+    } else if (aiState === 'circle') {
+        // Circolare attorno a player1
+        sceneContext.physics.velocityFromAngle(Phaser.Math.RadToDeg(angleToPlayer1 + Math.PI / 2), 100, player2.body.velocity);
+    }
+
+    // Sparare proiettili se abbastanza vicino
+    let currentTime = sceneContext.time.now;
+    if (distanceToPlayer1 < 400 && currentTime - lastShotTimeAI > shotCooldownAI) {
+        shootBullet(player2);
+        lastShotTimeAI = currentTime;
+    }
+}
+
+}
+
+function shootBullet(player) {
+    let currentTime = sceneContext.time.now;  // Usa 'sceneContext' per accedere al tempo
+    if (currentTime - lastShotTime < shotCooldown) {
+        return;
+    }
+    lastShotTime = currentTime;
+
+    console.log("Getting a bullet from bullets group.");
+    let bullet = null;
+    if (bullets) {
+        bullet = bullets.get(player.x, player.y);
+    }
+    if (bullet === null) { 
+        return; 
+    }
+
+    bullet.setData("owner", player);  // Set the owner of the bullet
+    bullet.setTexture('asteroide');
+    bullet.setScale(0.7);
+    // Calcola l'angolo in base all'accelerazione del giocatore, non alla sua velocità
+    let angle = Phaser.Math.RadToDeg(Math.atan2(player.body.acceleration.y, player.body.acceleration.x));
+
+    // Se l'accelerazione è zero (il giocatore non sta premendo alcun tasto direzionale), utilizza la velocità come fallback
+    if (player.body.acceleration.x === 0 && player.body.acceleration.y === 0) {
+        angle = Phaser.Math.RadToDeg(Math.atan2(player.body.velocity.y, player.body.velocity.x));
+    }
+
+    if (bullet) {
+        bullet.setActive(true).setVisible(true);
+        sceneContext.physics.velocityFromAngle(angle, 350, bullet.body.velocity);
+    }
+}
+
+
+    function specialAttack(player) {
+    for (let angle = 0; angle < 360; angle += 45) {
+        console.log("Getting a bullet from bullets group.");
+        if (bullets) { let bullet = bullets.get(player.x, player.y); }
+        if (bullet === null) { return; }
+        bullet.setData("owner", player);  // Set the owner of the bullet
+        if (bullet) {
+            bullet.setActive(true).setVisible(true);
+            this.physics.velocityFromAngle(angle, 300, bullet.body.velocity);
+        }
+    }
+}
+
+    
+function shootSpecialBullet(player) {
+    let bullet1 = bullets.get(player.x, player.y);
+    let bullet2 = bullets.get(player.x, player.y - 10);
+    let bullet3 = bullets.get(player.x, player.y + 10);
+    if (bullet1 && bullet2 && bullet3) {
+        bullet1.setActive(true).setVisible(true).setVelocityX(300);
+        bullet2.setActive(true).setVisible(true).setVelocityX(300);
+        bullet3.setActive(true).setVisible(true).setVelocityX(300);
+    }
+}
+    function hitPlayer1(player, bullet) {
+    if (bullet.getData("owner") !== player) {
+        bullet.setActive(false).setVisible(false);
+        bullet.destroy(); 
+        if (!player1ShieldActive) {
+            player1Health -= 10;
+            drawHealthBars();
+            if (player1Health <= 0) {
+                addCoins(10);
+                player1.destroy();
+                gameOver("Player 2 Wins");
+            }
+        } else {
+            bullet.setActive(false).setVisible(false);
+        }
+    }
+}
+
+    
+function hitPlayer2(player, bullet) {
+    if (bullet.getData("owner") !== player) {
+        bullet.setActive(false).setVisible(false);
+        player2Health -= 10;
+        bullet.destroy(); 
+        drawHealthBars();
+        if (player2Health <= 0) {
+            addCoins(10);
+            player2.destroy();
+            gameOver("Player 1 Wins");
+        }
+    }
+}
+    
+
+    function drawHealthBars() {
+        player1HealthBar.clear();
+        player1HealthBar.fillStyle(0x00FF00);
+        player1HealthBar.fillRect(10, 10, player1Health, 10);
+    
+        player2HealthBar.clear();
+        player2HealthBar.fillStyle(0x00FF00);
+        player2HealthBar.fillRect(530, 10, player2Health, 10);
+    }
+    
+
+    
+    function activateShield(player) {
+    player1ShieldActive = true;
+    player.setTint(0x00FF00);
+    sceneContext.time.delayedCall(5000, function () {
+        player1ShieldActive = false;
+        player.clearTint();
+    }, [], this);
+}
+    
+    function gameOver(winnerText) {
+    gameOverText.setText(winnerText);
+    gameOverText.setVisible(true);
+    addCoins(10);
+    sceneContext.time.delayedCall(3000, function () {
+        sceneContext.scene.restart();
+    }, [], this);
+}
+// Function to add coins
+function addCoins(amount) {
+    coinCount += amount;
+    coinText.setText('Monete: ' + coinCount);
+}
+
+// New function for the special attack
+function specialAttack(player) {
+    for (let angle = 0; angle < 360; angle += 45) {
+        console.log("Getting a bullet from bullets group.");
+        if (bullets) { let bullet = bullets.get(player.x, player.y); }
+        if (bullet === null) { return; }
+        bullet.setData("owner", player);  // Set the owner of the bullet
+        if (bullet) {
+            bullet.setActive(true).setVisible(true);
+            this.physics.velocityFromAngle(angle, 300, bullet.body.velocity);
+        }
+    }
+}
+var game = new Phaser.Game(config);
+
+</script>
+</body>
+</html>
